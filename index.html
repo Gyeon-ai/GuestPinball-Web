@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+  <title>게스트 핀볼</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="assets/guest-character.png">
+
+  <meta name="theme-color" content="#0e0f12">
+
+  <meta name="description" content="구슬을 굴려 당첨자를 뽑는 추첨기">
+  <meta property="og:title" content="게스트 핀볼">
+  <meta property="og:description" content="구슬을 굴려 당첨자를 뽑는 게스트 핀볼 추첨기">
+  <meta property="og:site_name" content="게스트 핀볼">
+  <meta property="og:type" content="website">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&amp;family=Press+Start+2P&amp;family=Noto+Sans+KR:wght@400;500;700;900&amp;display=swap">
+  <link rel='stylesheet' href='assets/style.scss' />
+</head>
+<body>
+<script type="module" src="./src/index.ts"></script>
+<script type="text/javascript">
+  function getNames() {
+    const value = document.querySelector('#in_names').value.trim();
+    return value.split(/[,\r\n]/g).map(v => v.trim()).filter(v => !!v);
+  }
+
+  function parseName(nameStr) {
+    const countMatch = /\*(\d+)\s*$/.exec(nameStr);
+    const name = (countMatch ? nameStr.slice(0, countMatch.index) : nameStr).trim();
+    const count = countMatch ? parseInt(countMatch[1], 10) : 1;
+    return {
+      name,
+      count,
+    };
+  }
+
+  function getReady() {
+    resetResultTimer();
+    const names = getNames();
+    window.roulette.setMarbles(names);
+    ready = names.length > 0;
+    localStorage.setItem('guest_pinball_names', names.join(','));
+    switch (winnerType) {
+      case 'first':
+        setWinnerRank(1);
+        break;
+      case 'last':
+        const total = window.roulette.getCount();
+        setWinnerRank(total);
+        break;
+    }
+  }
+
+  function setWinnerRank(rank) {
+    document.querySelector('#in_winningRank').value = rank;
+    window.options.winningRank = rank - 1;
+    window.roulette.setWinningRank(window.options.winningRank);
+
+    if (winnerType === 'first') {
+      document.querySelector('.btn-first-winner').classList.toggle('active', true);
+      document.querySelector('.btn-last-winner').classList.toggle('active', false);
+      document.querySelector('#in_winningRank').classList.toggle('active', false);
+    } else if (winnerType === 'last') {
+      document.querySelector('.btn-first-winner').classList.toggle('active', false);
+      document.querySelector('.btn-last-winner').classList.toggle('active', true);
+      document.querySelector('#in_winningRank').classList.toggle('active', false);
+    } else if (winnerType === 'custom') {
+      document.querySelector('.btn-first-winner').classList.toggle('active', false);
+      document.querySelector('.btn-last-winner').classList.toggle('active', false);
+      document.querySelector('#in_winningRank').classList.toggle('active', true);
+    }
+  }
+
+  function setSpeed(speed) {
+    window.roulette.setSpeed(speed);
+    document.querySelectorAll('.btn-speed').forEach((button) => {
+      button.classList.toggle('active', Number(button.dataset.speed) === speed);
+    });
+  }
+
+  let countdownInterval = null;
+  let countdownEndAt = 0;
+  let countdownRemainingMs = 0;
+  let countdownPaused = false;
+
+  function formatCountdown(totalSeconds) {
+    const safeSeconds = Math.max(0, Math.ceil(totalSeconds));
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    const seconds = safeSeconds % 60;
+    const minuteText = minutes.toString().padStart(2, '0');
+    const secondText = seconds.toString().padStart(2, '0');
+    return hours > 0 ? `${hours.toString().padStart(2, '0')}:${minuteText}:${secondText}` : `${minuteText}:${secondText}`;
+  }
+
+  function clearCountdownInterval() {
+    if (countdownInterval !== null) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
+  }
+
+  function updateCountdownPauseButton() {
+    const button = document.querySelector('#btnResultTimerPause');
+    if (!button) return;
+    button.textContent = countdownPaused ? '계속' : '일시정지';
+    button.setAttribute('aria-pressed', countdownPaused ? 'true' : 'false');
+    button.disabled = countdownRemainingMs <= 0;
+  }
+
+  function clearCountdownState() {
+    clearCountdownInterval();
+    countdownEndAt = 0;
+    countdownRemainingMs = 0;
+    countdownPaused = false;
+    updateCountdownPauseButton();
+  }
+
+  function resetResultTimer() {
+    clearCountdownState();
+    const overlay = document.querySelector('#resultTimerOverlay');
+    if (!overlay) return;
+    overlay.classList.add('hidden');
+    overlay.classList.remove('running');
+  }
+
+  function showResultTimerSetup() {
+    clearCountdownState();
+    const overlay = document.querySelector('#resultTimerOverlay');
+    overlay.classList.remove('hidden', 'running');
+    document.querySelector('#in_resultTimerMinutes').focus();
+  }
+
+  function updateResultCountdown() {
+    if (!countdownPaused) {
+      countdownRemainingMs = Math.max(0, countdownEndAt - Date.now());
+    }
+
+    const display = document.querySelector('#resultTimerDisplay');
+    display.textContent = formatCountdown(countdownRemainingMs / 1000);
+    display.classList.toggle('long', display.textContent.length > 5);
+    if (countdownRemainingMs === 0) {
+      clearCountdownInterval();
+      updateCountdownPauseButton();
+    }
+  }
+
+  function runResultCountdown() {
+    clearCountdownInterval();
+    countdownEndAt = Date.now() + countdownRemainingMs;
+    updateResultCountdown();
+    countdownInterval = setInterval(updateResultCountdown, 200);
+  }
+
+  function startResultCountdown() {
+    const minutesInput = document.querySelector('#in_resultTimerMinutes');
+    const secondsInput = document.querySelector('#in_resultTimerSeconds');
+    const minutes = Math.max(0, Math.floor(Number(minutesInput.value) || 0));
+    const seconds = Math.min(59, Math.max(0, Math.floor(Number(secondsInput.value) || 0)));
+    const durationSeconds = minutes * 60 + seconds;
+    if (durationSeconds <= 0) return;
+
+    minutesInput.value = minutes;
+    secondsInput.value = seconds;
+    const overlay = document.querySelector('#resultTimerOverlay');
+    countdownRemainingMs = durationSeconds * 1000;
+    countdownPaused = false;
+    overlay.classList.add('running');
+    updateCountdownPauseButton();
+    runResultCountdown();
+  }
+
+  function toggleResultCountdownPause() {
+    if (countdownRemainingMs <= 0) return;
+
+    if (countdownPaused) {
+      countdownPaused = false;
+      updateCountdownPauseButton();
+      runResultCountdown();
+      return;
+    }
+
+    countdownRemainingMs = Math.max(0, countdownEndAt - Date.now());
+    countdownPaused = true;
+    clearCountdownInterval();
+    updateResultCountdown();
+    updateCountdownPauseButton();
+  }
+
+
+  let ready = false;
+  let winnerType = 'first';
+
+  document.addEventListener('DOMContentLoaded', () => {
+    initialize();
+  });
+
+  function initialize() {
+    if (!window.roulette || !window.roulette.isReady) {
+      setTimeout(initialize, 100);
+      return;
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const namesFromUrl = urlParams.get('names');
+
+    if (namesFromUrl) {
+      document.querySelector('#in_names').value = namesFromUrl.replace(/,/g, '\n');
+    } else {
+      const savedNames = localStorage.getItem('guest_pinball_names');
+      if (savedNames) {
+        document.querySelector('#in_names').value = savedNames;
+      }
+    }
+    document.querySelector('#in_names').addEventListener('input', () => {
+      getReady();
+    });
+
+    // 종겜핀볼 Web(명단 수집 사이트)이 이 창을 열고 창 사이 전달(postMessage)로 보내는 명단을 받는다.
+    // 주소 뒤 ?names= 로 넘기면 명단이 길 때 주소가 너무 길어져 서버가 거절(414)하기 때문에 만든 통로다.
+    // 이 창을 연 창이 보낸 것만 받고, 받은 글자는 이름 칸에 넣는 데만 쓴다.
+    window.addEventListener('message', (e) => {
+      const data = e.data;
+      if (!window.opener || e.source !== window.opener) return;
+      if (!data || data.type !== 'pinball-names' || typeof data.names !== 'string') return;
+      if (data.names.length > 500000) return;
+      document.querySelector('#in_names').value = data.names.replace(/,/g, '\n');
+      getReady();
+    });
+    if (window.opener) {
+      try {
+        window.opener.postMessage({ type: 'pinball-ready' }, '*');
+      } catch (err) {}
+    }
+
+    document.querySelector('#in_names').addEventListener('blur', () => {
+      const nameSource = getNames();
+      const nameSet = new Set();
+      const nameCounts = {};
+      nameSource.forEach(nameSrc => {
+        const name = parseName(nameSrc);
+        const key = name.name;
+        if (!nameSet.has(key)) {
+          nameSet.add(key);
+          nameCounts[key] = 0;
+        }
+        nameCounts[key] += name.count;
+      });
+      const result = [];
+      Object.keys(nameCounts).forEach(key => {
+        if (nameCounts[key] > 1) {
+          result.push(`${key}*${nameCounts[key]}`);
+        } else {
+          result.push(key);
+        }
+      });
+
+      const oldValue = document.querySelector('#in_names').value;
+      const newValue = result.join(',');
+
+      if (oldValue !== newValue) {
+        document.querySelector('#in_names').value = newValue;
+        getReady();
+      }
+    });
+
+    document.querySelector('#btnShuffle').addEventListener('click', () => {
+      getReady();
+    });
+
+    document.querySelector('#btnStart').addEventListener('click', () => {
+      if (!ready) return;
+      setSpeed(1);
+      resetResultTimer();
+      document.querySelector('#settings').classList.add('game-running');
+      window.roulette.start();
+    });
+
+    document.querySelectorAll('.btn-speed').forEach((button) => {
+      button.addEventListener('click', () => setSpeed(Number(button.dataset.speed)));
+    });
+    setSpeed(1);
+
+    document.querySelector('#btnResultTimerStart').addEventListener('click', startResultCountdown);
+    document.querySelector('#btnResultTimerPause').addEventListener('click', toggleResultCountdownPause);
+    document.querySelector('#btnResultTimerReset').addEventListener('click', showResultTimerSetup);
+
+    window.roulette.setTheme('dark');
+    document.documentElement.classList.remove('light');
+
+    document.querySelector('#in_winningRank').addEventListener('change', (e) => {
+      const v = parseInt(e.target.value, 10);
+      winnerType = 'custom';
+      setWinnerRank(isNaN(v) ? 0 : v);
+    });
+
+    document.querySelector('.btn-last-winner').addEventListener('click', () => {
+      const total = window.roulette.getCount();
+      winnerType = 'last';
+      setWinnerRank(total);
+    });
+    document.querySelector('.btn-first-winner').addEventListener('click', () => {
+      winnerType = 'first';
+      setWinnerRank(1);
+    });
+
+    window.roulette.addEventListener('goal', () => {
+      ready = false;
+      showResultTimerSetup();
+      setTimeout(() => {
+        document.querySelector('#settings').classList.remove('game-running');
+      }, 3000);
+    });
+
+    window.roulette.addEventListener('message', (e) => {
+      simpleToast(e.detail);
+    });
+
+    const toggleBtn = document.querySelector('#btnToggleSettings');
+    const collapsible = document.querySelector('.collapsible-rows');
+    toggleBtn.addEventListener('click', () => {
+      collapsible.classList.toggle('collapsed');
+      toggleBtn.querySelector('.toggle-arrow').textContent =
+        collapsible.classList.contains('collapsed') ? '▲' : '▼';
+    });
+
+    document.querySelector('#btnShuffle').click();
+
+    const maps = window.roulette.getMaps();
+    const mapSelector = document.querySelector('#sltMap');
+    maps.forEach((map) => {
+      const option = document.createElement('option');
+      option.value = map.index;
+      option.innerHTML = map.title;
+      option.setAttribute('data-trans', '');
+      window.translateElement(option);
+      mapSelector.append(option);
+    });
+    mapSelector.addEventListener('change', (e) => {
+      const index = e.target.value;
+      window.roulette.setMap(index);
+    });
+    setupDotSelect(mapSelector);
+
+    // 맵 선택의 펼쳐지는 목록을 브라우저 기본 대신 도트 모양으로 보여 준다.
+    // 고르면 원래 선택 상자의 값을 바꾸고 change를 알리므로 맵을 바꾸는 동작은 그대로다.
+    function setupDotSelect(select) {
+      const row = select.parentElement;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'dot-select';
+      button.setAttribute('aria-haspopup', 'listbox');
+      button.setAttribute('aria-label', select.getAttribute('aria-label') || '');
+      const list = document.createElement('ul');
+      list.className = 'dot-select-list';
+      list.setAttribute('role', 'listbox');
+      list.hidden = true;
+      row.classList.add('dot-select-row');
+      select.classList.add('dot-select-native');
+      row.append(button, list);
+
+      const close = () => {
+        list.hidden = true;
+        button.setAttribute('aria-expanded', 'false');
+      };
+      const sync = () => {
+        const options = Array.from(select.options);
+        const current = options[select.selectedIndex];
+        button.textContent = current ? current.textContent : '';
+        list.textContent = '';
+        options.forEach((option) => {
+          const item = document.createElement('li');
+          item.setAttribute('role', 'option');
+          item.tabIndex = -1;
+          item.textContent = option.textContent;
+          if (option === current) {
+            item.className = 'on';
+            item.setAttribute('aria-selected', 'true');
+          }
+          item.addEventListener('click', () => {
+            close();
+            if (select.value === option.value) return;
+            select.value = option.value;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+          });
+          list.append(item);
+        });
+      };
+      button.addEventListener('click', () => {
+        list.hidden = !list.hidden;
+        button.setAttribute('aria-expanded', String(!list.hidden));
+        const first = list.querySelector('.on') || list.firstElementChild;
+        if (!list.hidden && first) first.focus();
+      });
+      list.addEventListener('keydown', (e) => {
+        const items = Array.from(list.children);
+        const at = items.indexOf(document.activeElement);
+        if (e.key === 'ArrowDown' && at < items.length - 1) { e.preventDefault(); items[at + 1].focus(); }
+        if (e.key === 'ArrowUp' && at > 0) { e.preventDefault(); items[at - 1].focus(); }
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.activeElement.click(); button.focus(); }
+        if (e.key === 'Escape') { close(); button.focus(); }
+      });
+      document.addEventListener('mousedown', (e) => {
+        if (!row.contains(e.target)) close();
+      });
+      select.addEventListener('change', sync);
+      sync();
+    }
+
+    function simpleToast(msg) {
+      const toast = document.createElement('div');
+      toast.classList.add('toast');
+      toast.innerHTML = msg;
+
+      if (window.translateElement) {
+        window.translateElement(toast);
+      }
+
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        document.body.removeChild(toast);
+      }, 1200);
+    }
+
+  }
+</script>
+<h1 class="sr-only">게스트 핀볼 - 랜덤 추첨기</h1>
+<button type="button" id="brandMark" class="brand-mark" aria-haspopup="dialog" aria-expanded="false" aria-controls="brandEditor" title="이름표와 색 바꾸기">
+  <i class="brand-ball" aria-hidden="true"></i>
+  <strong id="brandTitle">게스트 핀볼</strong>
+</button>
+<div id="brandEditor" class="brand-editor" role="dialog" aria-label="이름표와 색 바꾸기" hidden>
+  <label for="in_brandTitle">이름표</label>
+  <input type="text" id="in_brandTitle" placeholder="게스트 핀볼" autocomplete="off" spellcheck="false" />
+  <span class="brand-editor-label">색</span>
+  <div id="brandColors" class="brand-colors"></div>
+  <span class="brand-editor-label">네온 바·장애물 색</span>
+  <div id="brandNeons" class="brand-colors"></div>
+  <button type="button" id="btnBrandCopy">이 모양의 주소 복사</button>
+  <p id="brandMessage" class="brand-message" aria-live="polite"></p>
+</div>
+<div id="settings" class="settings">
+  <div class="right">
+    <button id="btnToggleSettings" class="btn-toggle-settings">
+      <span data-trans>Settings</span>
+      <i class="toggle-arrow">▲</i>
+    </button>
+    <div class="collapsible-rows collapsed">
+      <div class="row">
+        <select id="sltMap" aria-label="맵"></select>
+      </div>
+      <div class="row">
+        <div class="btn-group" aria-label="당첨 순위">
+          <button class="btn-winner btn-first-winner active" data-trans>First</button>
+          <button class="btn-winner btn-last-winner" data-trans>Last</button>
+          <input type="number" id="in_winningRank" value="1" min="1" />
+        </div>
+      </div>
+      <div class="actions setup-actions">
+        <button id="btnShuffle">
+          <i class="icon shuffle"></i>
+          <span data-trans>Shuffle</span>
+        </button>
+        <button id="btnStart">
+          <i class="icon play"></i>
+          <span data-trans>Start</span>
+        </button>
+      </div>
+      <div class="row speed-row">
+        <div class="btn-group speed-group" aria-label="배속">
+          <button type="button" class="btn-speed active" data-speed="1">1x</button>
+          <button type="button" class="btn-speed" data-speed="2">2x</button>
+          <button type="button" class="btn-speed" data-speed="5">5x</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="left">
+    <textarea id="in_names" placeholder="Input names separated by commas or line feed here" data-trans="placeholder">게스트,종겜,핀볼</textarea>
+  </div>
+</div>
+<div id="resultTimerOverlay" class="result-timer-overlay hidden" role="dialog" aria-label="타이머 설정">
+  <div class="result-timer-setup">
+    <strong>타이머 설정</strong>
+    <div class="result-timer-controls">
+      <input type="number" id="in_resultTimerMinutes" value="0" min="0" max="999" step="1" aria-label="타이머 분" />
+      <span>분</span>
+      <input type="number" id="in_resultTimerSeconds" value="0" min="0" max="59" step="1" aria-label="타이머 초" />
+      <span>초</span>
+      <button type="button" id="btnResultTimerStart">시작</button>
+    </div>
+  </div>
+  <div class="result-timer-running" aria-live="polite">
+    <span>남은 시간</span>
+    <strong id="resultTimerDisplay">00:00</strong>
+    <div class="result-timer-actions">
+      <button type="button" id="btnResultTimerPause" aria-pressed="false">일시정지</button>
+      <button type="button" id="btnResultTimerReset">리셋</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
