@@ -130,12 +130,12 @@ canvas {
     filter: brightness(1.12);
   }
 
-  // 게스트 캐릭터(물음표 상자 머리). 흰 바탕 그림이라 흰 칸에 담는다.
+  // 게스트 아이콘(도트 물음표, 투명 바탕). 흰 칸 안에 여백을 두고 담는다.
   .brand-ball {
     flex: none;
     width: 44px;
     height: 44px;
-    background: #fff url('guest-character.png') 50% 56% / 185% no-repeat;
+    background: #fff url('guest-icon.png') 50% 50% / 84% no-repeat;
     image-rendering: pixelated;
     box-shadow: 0 0 0 2px var(--dot-ink);
   }
