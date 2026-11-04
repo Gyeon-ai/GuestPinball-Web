@@ -104,6 +104,20 @@ export class RouletteRenderer {
     resizing();
   }
 
+  /**
+   * Request the web-font glyphs for these names ahead of time. The winner name and rank list fonts are
+   * served in pieces by character, so without this the winner name is first drawn in a fallback font
+   * and switches a moment later. Fire-and-forget; drawing never waits for it.
+   */
+  preloadNameFonts(names: string[]) {
+    if (typeof document === 'undefined' || !document.fonts) return;
+    const glyphs = Array.from(new Set(Array.from(names.join('')))).join('');
+    if (!glyphs) return;
+    for (const font of [`400 12px ${NAME_FONT_FAMILY}`, `700 12px ${NAME_FONT_FAMILY}`, `48px ${WINNER_NAME_FONT_FAMILY}`]) {
+      document.fonts.load(font, glyphs).catch(() => {});
+    }
+  }
+
   private async _load(): Promise<void> {
     // 캔버스에 쓰는 웹폰트를 미리 요청해 둔다. 기다리지는 않는다(늦게 오면 그때부터 그 글꼴로 그려진다).
     if (typeof document !== 'undefined' && document.fonts) {
